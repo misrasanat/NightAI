@@ -216,3 +216,28 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Node/npm
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# Native Mobile builds (if prebuilt)
+ios/
+android/
+*.xcworkspace
+*.xcodeproj
+
+# SQLite and local vector DB files
+*.db
+*.sqlite
+data/
+chroma_db/
+

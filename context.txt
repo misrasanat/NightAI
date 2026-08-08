@@ -1,0 +1,82 @@
+Here is a clear breakdown of where NightAI currently stands, followed by the exact step-by-step game plan to move from boilerplate to a working prototype.
+
+1. What You Have Right Now
+You have completed the foundational plumbing and schema architecture for NightAI. Specifically:
+
+State & Data Foundation: SQLite handles user config and logs; ChromaDB vector storage is ready for long-term memory retrieval. Google OAuth tokens persist in SQLite so you don't lose access when sessions restart.
+
+Brain & Routing: Gemini 3.5 Flash is wired up inside backend/app/core/brain.py. It receives text, outputs structured JSON intents (MusicIntent, CalendarIntent, etc.), and knows where to dispatch them.  
+Google AI for Developers
+
+Settings & OAuth Loop: The React Native mobile settings screen successfully communicates with FastAPI to read/write state and perform Google OAuth handshake.
+
+Service Skeletons: TTS (ElevenLabs) and STT (Whisper) modules exist as helper wrappers, ready to receive live audio payload bytes.
+
+2. What to Do Next (Execution Sequence)
+To avoid getting stuck attempting to wire up everything at once, execute this in 3 tightly focused sprints:
+
+Step 1: Implement the Concrete Action Agents (Backend Only)
+Right now, your brain classifies intents but routes them to non-existent agents. Build out backend/app/agents/ one by one using a test endpoint before touching mobile audio:
+
+CalendarAgent (Google Calendar API):
+
+Use the refresh_token saved in SQLite to get a fresh access token.
+
+Add a .execute(intent_data) method that calls Google Calendar's events().list() and events().insert().
+
+MusicAgent (Spotify Web API):
+
+Implement Spotify OAuth or Client Credentials in backend settings.
+
+Wire .execute() to spotipy or direct HTTP calls to search tracks, trigger playback, or fetch user playlists.
+
+NotesAgent (Notion / Vector DB):
+
+Wire up Notion API calls to append page content or query database rows.
+
+Integrate ChromaDB vector search (vector_db.py) directly here so queries like "What did I note about my project idea?" do semantic similarity search.
+
+CommunicationAgent (Gmail API):
+
+Wire Google API client to draft/send emails or list recent unread threads using the authenticated OAuth token.
+
+Step 2: Wire Up Mobile Microphone & Audio Streaming (Mobile to Backend)
+Once the backend agents can actually perform actions from raw text, make the voice interaction real:
+
+Mobile Audio Capture:
+
+Replace the mocked toggle in VoiceScreen.jsx with expo-av or react-native-live-audio-stream.
+
+Request OS mic permissions and record audio in PCM/WAV chunk formats.
+
+WebSocket Streaming (/api/v1/stream):
+
+Stream raw audio binary chunks over the WebSocket from Expo to FastAPI.
+
+Backend STT Processing:
+
+Replace the hardcoded string in backend/app/services/stt.py with the actual Whisper API call (or Gemini native audio transcription) on the incoming stream bytes.
+
+Pass the transcribed text into brain.py for routing.
+
+Step 3: Complete the End-to-End Voice Feedback Loop
+Close the loop so NightAI speaks back to you on your device:
+
+Audio Synthesis:
+
+Once an Agent executes its task, pass the result string to tts.py to generate speech via ElevenLabs.
+
+Store/stream the generated .mp3 bytes or serve a temporary audio endpoint URL back through the WebSocket.
+
+Mobile Playback:
+
+In VoiceScreen.jsx, take the incoming audio_url or base64 audio stream from the WebSocket and play it through expo-av Sound objects.
+
+Suggested Immediate Task
+Start with Step 1: CalendarAgent. Since your Google OAuth pipeline is already verified and tokens are storing properly in SQLite, getting Google Calendar reading/writing via Gemini intents will give you your first fully functional end-to-end agentic workflow.
+
+How would you like to start?
+
+Draft the CalendarAgent implementation code
+
+Set up Expo audio recording for mobile streaming

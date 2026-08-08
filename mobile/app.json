@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "NightAI",
+    "slug": "nightai",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.misra.nightai",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "NightAI requires microphone access to listen for wake-words and transcribe voice commands."
+      }
+    },
+    "android": {
+      "package": "com.misra.nightai",
+      "permissions": [
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS"
+      ]
+    },
+    "plugins": [
+      "expo-audio"
+    ]
+  }
+}

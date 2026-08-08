@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NightAI Brain Developer Playground</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0B0C10;
+            color: #C5C6C7;
+            font-family: 'Inter', sans-serif;
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.02);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            transition: all 0.3s ease;
+        }
+        .glass-card:hover {
+            border-color: rgba(99, 102, 241, 0.2);
+            background: rgba(99, 102, 241, 0.01);
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+    <!-- Header -->
+    <header class="border-b border-gray-800 bg-[#0D0E15]/80 backdrop-blur px-6 py-4 flex justify-between items-center sticky top-0 z-50">
+        <div>
+            <h1 class="text-xl font-bold tracking-widest text-white">NIGHTAI <span class="text-xs text-indigo-500 font-semibold uppercase tracking-wider ml-1">Playground</span></h1>
+            <p class="text-xs text-gray-500 mt-0.5">Brain Orchestrator & Intent Routing System Console</p>
+        </div>
+        <div class="flex items-center gap-4">
+            <div id="apiStatus" class="flex items-center gap-2 bg-indigo-950/30 px-3 py-1.5 rounded-full border border-indigo-900/30">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span class="text-xs font-semibold text-gray-300">SERVER ONLINE</span>
+            </div>
+            <div id="geminiStatus" class="flex items-center gap-2 bg-indigo-950/30 px-3 py-1.5 rounded-full border border-indigo-900/30">
+                <span id="geminiDot" class="w-2.5 h-2.5 rounded-full bg-gray-600"></span>
+                <span id="geminiText" class="text-xs font-semibold text-gray-300">GEMINI PENDING</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- Left Column: Inputs -->
+        <section class="lg:col-span-5 flex flex-col gap-6">
+            <!-- Command Input Box -->
+            <div class="glass-panel rounded-2xl p-6 flex flex-col gap-4">
+                <h2 class="text-sm font-bold text-indigo-400 tracking-wider uppercase">Send Prompt</h2>
+                <div class="flex flex-col gap-2">
+                    <textarea id="promptInput" rows="3" class="w-full bg-[#08090D] border border-gray-800 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition resize-none" placeholder="Type a command (e.g., 'Play my study playlist' or 'Am I free at 3pm?')"></textarea>
+                    <div class="flex gap-2">
+                        <button id="sendBtn" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-xl shadow-lg shadow-indigo-600/20 transition flex items-center justify-center gap-2">
+                            <span>Execute Workflow</span>
+                            <span class="text-xs">⚡</span>
+                        </button>
+                        <button id="recordBtn" class="bg-gray-800 hover:bg-gray-700 text-white font-semibold px-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2">
+                            <span id="recordIcon">🎤</span>
+                            <span id="recordText">Record</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Command Suggestions -->
+            <div class="glass-panel rounded-2xl p-6 flex flex-col gap-3">
+                <h2 class="text-sm font-bold text-indigo-400 tracking-wider uppercase">Sample Templates</h2>
+                <p class="text-xs text-gray-500">Click a template below to prefill and execute immediately:</p>
+                <div class="flex flex-col gap-2">
+                    <button onclick="prefillAndRun('Night, play some lofi music on Spotify')" class="text-left text-xs bg-gray-900/40 hover:bg-indigo-950/20 border border-gray-800/80 px-3 py-2.5 rounded-lg text-gray-300 transition">
+                        🎵 Play lofi music on Spotify
+                    </button>
+                    <button onclick="prefillAndRun('Am I free this afternoon? check my calendar')" class="text-left text-xs bg-gray-900/40 hover:bg-indigo-950/20 border border-gray-800/80 px-3 py-2.5 rounded-lg text-gray-300 transition">
+                        📅 Check today's calendar events
+                    </button>
+                    <button onclick="prefillAndRun('Remind me to study at 8 PM tonight')" class="text-left text-xs bg-gray-900/40 hover:bg-indigo-950/20 border border-gray-800/80 px-3 py-2.5 rounded-lg text-gray-300 transition">
+                        📝 Create a reminder note
+                    </button>
+                    <button onclick="prefillAndRun('Email my teammates that the backend setup is done')" class="text-left text-xs bg-gray-900/40 hover:bg-indigo-950/20 border border-gray-800/80 px-3 py-2.5 rounded-lg text-gray-300 transition">
+                        📧 Send email to team
+                    </button>
+                    <button onclick="prefillAndRun('Tell me a joke about robots')" class="text-left text-xs bg-gray-900/40 hover:bg-indigo-950/20 border border-gray-800/80 px-3 py-2.5 rounded-lg text-gray-300 transition">
+                        💬 General assistant chat
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right Column: Outputs -->
+        <section class="lg:col-span-7 flex flex-col gap-6">
+            <!-- Brain Output Panel -->
+            <div class="glass-panel rounded-2xl p-6 flex flex-col flex-1 min-h-[400px]">
+                <div class="flex justify-between items-center border-b border-gray-800 pb-3 mb-4">
+                    <h2 class="text-sm font-bold text-indigo-400 tracking-wider uppercase">Brain Inspection</h2>
+                    <div class="flex gap-2">
+                        <button onclick="switchTab('reply')" id="tab-reply" class="text-xs px-3 py-1.5 rounded-lg font-semibold bg-indigo-600 text-white transition">Voice Reply</button>
+                        <button onclick="switchTab('json')" id="tab-json" class="text-xs px-3 py-1.5 rounded-lg font-semibold text-gray-400 hover:text-white transition">Structured JSON</button>
+                    </div>
+                </div>
+
+                <!-- Tab Contents -->
+                <div class="flex-1 flex flex-col justify-between">
+                    <!-- Voice Reply Tab -->
+                    <div id="content-reply" class="flex-1 flex flex-col justify-center items-center text-center p-4">
+                        <div id="replyPlaceholder" class="text-gray-600 italic">
+                            Output replies will be rendered here.
+                        </div>
+                        <div id="replyWrapper" class="hidden w-full text-left bg-indigo-950/10 border border-indigo-900/30 rounded-xl p-5">
+                            <span class="text-[10px] text-indigo-400 font-bold tracking-widest block mb-2 uppercase">ASSISTANT RESPONSE</span>
+                            <p id="replyText" class="text-white text-lg leading-relaxed"></p>
+                        </div>
+                    </div>
+
+                    <!-- Structured JSON Tab -->
+                    <div id="content-json" class="hidden flex-1 flex flex-col">
+                        <pre id="jsonViewer" class="bg-[#050508] border border-gray-800 rounded-xl p-4 text-xs font-mono text-emerald-400 overflow-auto max-h-[320px] flex-1">{}</pre>
+                    </div>
+
+                    <!-- Execution Details -->
+                    <div class="mt-4 border-t border-gray-800 pt-3 flex justify-between items-center text-xs text-gray-500">
+                        <span id="responseStatus">Status: Idle</span>
+                        <span id="responseTime">Time: -- ms</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Database Log Panel -->
+            <div class="glass-panel rounded-2xl p-6 flex flex-col h-[280px]">
+                <div class="flex justify-between items-center border-b border-gray-800 pb-2 mb-3">
+                    <h2 class="text-sm font-bold text-indigo-400 tracking-wider uppercase">Audit Log (SQLite)</h2>
+                    <button onclick="fetchLogs()" class="text-[10px] text-indigo-500 hover:text-indigo-400 font-bold uppercase tracking-wider">Refresh logs</button>
+                </div>
+                <div id="logsContainer" class="flex-1 overflow-y-auto space-y-2 pr-1">
+                    <div class="text-center text-gray-600 text-xs py-10">No recent logs.</div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-gray-800 bg-[#08090D] py-4 px-6 text-center text-xs text-gray-600">
+        NightAI Personal AI OS &copy; 2026. Made with Google Gemini.
+    </footer>
+
+    <!-- Scripts -->
+    <script>
+        const API_URL = "http://localhost:8000";
+
+        // DOM elements
+        const promptInput = document.getElementById("promptInput");
+        const sendBtn = document.getElementById("sendBtn");
+        const apiStatus = document.getElementById("apiStatus");
+        const geminiStatus = document.getElementById("geminiStatus");
+        const geminiDot = document.getElementById("geminiDot");
+        const geminiText = document.getElementById("geminiText");
+        
+        const replyPlaceholder = document.getElementById("replyPlaceholder");
+        const replyWrapper = document.getElementById("replyWrapper");
+        const replyText = document.getElementById("replyText");
+        
+        const jsonViewer = document.getElementById("jsonViewer");
+        const responseStatus = document.getElementById("responseStatus");
+        const responseTime = document.getElementById("responseTime");
+        const logsContainer = document.getElementById("logsContainer");
+
+        let activeTab = "reply";
+
+        // Tab routing switcher
+        function switchTab(tab) {
+            activeTab = tab;
+            const replyBtn = document.getElementById("tab-reply");
+            const jsonBtn = document.getElementById("tab-json");
+            const replyContent = document.getElementById("content-reply");
+            const jsonContent = document.getElementById("content-json");
+
+            if (tab === "reply") {
+                replyBtn.className = "text-xs px-3 py-1.5 rounded-lg font-semibold bg-indigo-600 text-white transition";
+                jsonBtn.className = "text-xs px-3 py-1.5 rounded-lg font-semibold text-gray-400 hover:text-white transition";
+                replyContent.classList.remove("hidden");
+                jsonContent.classList.add("hidden");
+            } else {
+                replyBtn.className = "text-xs px-3 py-1.5 rounded-lg font-semibold text-gray-400 hover:text-white transition";
+                jsonBtn.className = "text-xs px-3 py-1.5 rounded-lg font-semibold bg-indigo-600 text-white transition";
+                replyContent.classList.add("hidden");
+                jsonContent.classList.remove("hidden");
+            }
+        }
+
+        // Prefill template prompts
+        function prefillAndRun(promptText) {
+            promptInput.value = promptText;
+            runWorkflow();
+        }
+
+        // Run prompt workflow
+        async function runWorkflow() {
+            const query = promptInput.value.trim();
+            if (!query) return;
+
+            // UI loading state
+            sendBtn.disabled = true;
+            sendBtn.innerHTML = "Processing...";
+            responseStatus.innerText = "Status: Executing Brain logic...";
+            const startTime = performance.now();
+
+            try {
+                const response = await fetch(`${API_URL}/api/v1/process`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ query: query })
+                });
+                
+                const data = await response.json();
+                const duration = Math.round(performance.now() - startTime);
+                
+                // Show result on success
+                responseStatus.innerText = "Status: Complete";
+                responseTime.innerText = `Time: ${duration} ms`;
+
+                // Render structured output
+                jsonViewer.innerText = JSON.stringify(data, null, 2);
+
+                // Render voice reply text
+                replyPlaceholder.classList.add("hidden");
+                replyWrapper.classList.remove("hidden");
+                replyText.innerText = data.reply;
+
+                // If output returned, automatically refresh database audit logs
+                fetchLogs();
+            } catch (err) {
+                responseStatus.innerText = "Status: Error";
+                responseTime.innerText = "Time: -- ms";
+                replyPlaceholder.classList.remove("hidden");
+                replyWrapper.classList.add("hidden");
+                jsonViewer.innerText = JSON.stringify({ error: err.message }, null, 2);
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.innerHTML = `<span>Execute Workflow</span><span class="text-xs">⚡</span>`;
+            }
+        }
+
+        // Fetch logs
+        async function fetchLogs() {
+            try {
+                const response = await fetch(`${API_URL}/api/v1/logs`);
+                const logs = await response.json();
+                
+                if (logs.length === 0) {
+                    logsContainer.innerHTML = '<div class="text-center text-gray-600 text-xs py-10">No recent logs.</div>';
+                    return;
+                }
+
+                logsContainer.innerHTML = logs.map(log => `
+                    <div class="glass-card rounded-xl p-3 flex flex-col gap-1.5 text-xs">
+                        <div class="flex justify-between items-center text-gray-500">
+                            <span class="font-bold text-indigo-500">${log.intent}</span>
+                            <span>${new Date(log.timestamp).toLocaleTimeString()}</span>
+                        </div>
+                        <p class="text-white"><span class="text-gray-500">Query:</span> "${log.user_query}"</p>
+                        <p class="text-gray-400"><span class="text-gray-500 font-medium">Response:</span> ${log.response}</p>
+                    </div>
+                `).join('');
+            } catch (err) {
+                logsContainer.innerHTML = `<div class="text-center text-red-500 text-xs py-10">Failed to load logs: ${err.message}</div>`;
+            }
+        }
+
+        // Fetch health config status
+        async function fetchHealth() {
+            try {
+                const response = await fetch(`${API_URL}/health`);
+                const health = await response.json();
+                
+                if (health.gemini_configured) {
+                    geminiDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse";
+                    geminiText.innerText = "GEMINI ACTIVE";
+                    geminiText.className = "text-xs font-semibold text-emerald-400";
+                } else {
+                    geminiDot.className = "w-2.5 h-2.5 rounded-full bg-amber-500";
+                    geminiText.innerText = "GEMINI KEY MISSING";
+                    geminiText.className = "text-xs font-semibold text-amber-400";
+                }
+            } catch (err) {
+                apiStatus.innerHTML = `
+                    <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                    <span class="text-xs font-semibold text-red-400">SERVER OFFLINE</span>
+                `;
+            }
+        }
+
+        // Web Audio Recording Logic
+        const recordBtn = document.getElementById("recordBtn");
+        const recordIcon = document.getElementById("recordIcon");
+        const recordText = document.getElementById("recordText");
+
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecordingWeb = false;
+
+        recordBtn.addEventListener("click", async () => {
+            if (isRecordingWeb) {
+                mediaRecorder.stop();
+            } else {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    audioChunks = [];
+                    mediaRecorder = new MediaRecorder(stream);
+                    
+                    mediaRecorder.ondataavailable = (event) => {
+                        audioChunks.push(event.data);
+                    };
+
+                    mediaRecorder.onstop = async () => {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        await uploadWebAudio(audioBlob);
+                        
+                        // Stop all tracks in the stream to release the mic
+                        stream.getTracks().forEach(track => track.stop());
+                    };
+
+                    mediaRecorder.start();
+                    isRecordingWeb = true;
+                    recordBtn.classList.remove("bg-gray-800", "hover:bg-gray-700");
+                    recordBtn.classList.add("bg-red-600", "hover:bg-red-500", "animate-pulse");
+                    recordIcon.innerText = "🛑";
+                    recordText.innerText = "Recording...";
+                } catch (err) {
+                    alert("Microphone access denied or not available: " + err.message);
+                }
+            }
+        });
+
+        async function uploadWebAudio(blob) {
+            sendBtn.disabled = true;
+            recordBtn.disabled = true;
+            responseStatus.innerText = "Status: Transcribing & Processing audio...";
+            const startTime = performance.now();
+
+            const formData = new FormData();
+            formData.append("audio", blob, "web_audio.webm");
+            
+            const contextObj = {
+                local_time: new Date().toString(),
+                current_screen: "WebPlayground",
+            };
+            formData.append("context", JSON.stringify(contextObj));
+
+            try {
+                const response = await fetch(`${API_URL}/api/v1/process-audio`, {
+                    method: "POST",
+                    body: formData
+                });
+                
+                const data = await response.json();
+                const duration = Math.round(performance.now() - startTime);
+                
+                responseStatus.innerText = "Status: Complete";
+                responseTime.innerText = `Time: ${duration} ms`;
+
+                promptInput.value = data.query || "";
+                jsonViewer.innerText = JSON.stringify(data, null, 2);
+
+                replyPlaceholder.classList.add("hidden");
+                replyWrapper.classList.remove("hidden");
+                replyText.innerText = data.reply;
+
+                if (data.audio_base64) {
+                    const audio = new Audio("data:audio/mp3;base64," + data.audio_base64);
+                    audio.play().catch(e => console.log("Audio autoplay blocked by browser policy:", e));
+                }
+
+                fetchLogs();
+            } catch (err) {
+                responseStatus.innerText = "Status: Error";
+                responseTime.innerText = "Time: -- ms";
+                replyPlaceholder.classList.remove("hidden");
+                replyWrapper.classList.add("hidden");
+                jsonViewer.innerText = JSON.stringify({ error: err.message }, null, 2);
+            } finally {
+                sendBtn.disabled = false;
+                recordBtn.disabled = false;
+                
+                isRecordingWeb = false;
+                recordBtn.classList.remove("bg-red-600", "hover:bg-red-500", "animate-pulse");
+                recordBtn.classList.add("bg-gray-800", "hover:bg-gray-700");
+                recordIcon.innerText = "🎤";
+                recordText.innerText = "Record";
+            }
+        }
+
+        // Click listeners
+        sendBtn.addEventListener("click", runWorkflow);
+
+        // Load init stats
+        fetchHealth();
+        fetchLogs();
+    </script>
+</body>
+</html>

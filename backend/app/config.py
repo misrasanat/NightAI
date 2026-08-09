@@ -16,6 +16,8 @@ class Settings(BaseSettings):
 
     # AI Model Keys
     GEMINI_API_KEY: str | None = None
+    GEMINI_MODEL: str = "gemini-3.5-flash"
+
 
     # TTS Setup
     ELEVEN_LABS_API_KEY: str | None = None
@@ -41,8 +43,12 @@ class Settings(BaseSettings):
     NOTION_DATABASE_ID: str | None = None
 
 
+def get_settings() -> Settings:
+    return Settings()
+
 # Instantiate configuration settings
 settings = Settings()
 
 # Ensure local data folder exists
 os.makedirs("./data", exist_ok=True)
+

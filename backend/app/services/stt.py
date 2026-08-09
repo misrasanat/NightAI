@@ -1,23 +1,27 @@
 import google.generativeai as genai
-from app.config import settings
+from app.config import get_settings
 
 
 class STTService:
     """Service to convert spoken audio into text transcripts."""
 
     def __init__(self):
-        self.api_key = settings.GEMINI_API_KEY
+        current_settings = get_settings()
+        self.api_key = current_settings.GEMINI_API_KEY
         if self.api_key:
             genai.configure(api_key=self.api_key)
 
     async def transcribe_audio_file(self, audio_bytes: bytes, mime_type: str = "audio/m4a") -> str:
         """Transcribes a raw binary audio file to text using Gemini."""
-        if not self.api_key:
+        current_settings = get_settings()
+        api_key = current_settings.GEMINI_API_KEY
+        if not api_key:
             return "Error: Gemini API key not configured."
 
         try:
-            # gemini-3.5-flash is extremely fast and accurate for speech-to-text transcription
-            model = genai.GenerativeModel("gemini-3.5-flash")
+            genai.configure(api_key=api_key)
+            model_name = getattr(current_settings, "GEMINI_MODEL", "gemini-3.5-flash")
+            model = genai.GenerativeModel(model_name)
             
             audio_part = {
                 "mime_type": mime_type,

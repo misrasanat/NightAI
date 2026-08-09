@@ -5,7 +5,7 @@ import google.generativeai as genai
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
-from app.config import settings
+from app.config import get_settings
 from app.agents.base import BaseAgent, AgentResponse
 from app.db.database import InteractionLog, UserPreferences, engine
 from app.agents.communication import CommunicationAgent
@@ -52,7 +52,8 @@ class ControllerBrain:
     """
 
     def __init__(self):
-        self.api_key = settings.GEMINI_API_KEY
+        current_settings = get_settings()
+        self.api_key = current_settings.GEMINI_API_KEY
         if self.api_key:
             genai.configure(api_key=self.api_key)
         self.agents: Dict[str, BaseAgent] = {}
@@ -68,6 +69,7 @@ class ControllerBrain:
         agents and environment configuration.
         """
         status_lines = []
+        current_settings = get_settings()
         
         # Communication Check
         has_google_sync = False
@@ -93,14 +95,14 @@ class ControllerBrain:
         
         # MusicAgent
         has_music = "MusicAgent" in self.agents
-        has_spotify = bool(settings.SPOTIFY_CLIENT_ID and settings.SPOTIFY_CLIENT_SECRET)
+        has_spotify = bool(current_settings.SPOTIFY_CLIENT_ID and current_settings.SPOTIFY_CLIENT_SECRET)
         status_lines.append(
             f"- MusicAgent: {'ACTIVE (Spotify playback enabled)' if (has_music and has_spotify) else 'INACTIVE (Spotify client credentials not configured in backend .env)'}"
         )
         
         # NotesAgent
         has_notes = "NotesAgent" in self.agents
-        has_notion = bool(settings.NOTION_API_KEY and settings.NOTION_DATABASE_ID)
+        has_notion = bool(current_settings.NOTION_API_KEY and current_settings.NOTION_DATABASE_ID)
         status_lines.append(
             f"- NotesAgent: {'ACTIVE (Notion synchronization enabled)' if (has_notes and has_notion) else 'INACTIVE (Notion credentials not configured in backend .env)'}"
         )
@@ -134,8 +136,9 @@ class ControllerBrain:
         if context is None:
             context = {}
 
-        # If API key is not configured, fallback to basic mock routing
-        if not self.api_key:
+        current_settings = get_settings()
+        api_key = current_settings.GEMINI_API_KEY
+        if not api_key:
             return {
                 "intent": "GeneralChatIntent",
                 "agent": None,
@@ -144,6 +147,7 @@ class ControllerBrain:
                 "explanation": "Gemini API key not configured. Offline mode/fallback active.",
             }
 
+        genai.configure(api_key=api_key)
         capabilities_status = self.get_system_capabilities_status()
         history = self.get_recent_conversation_history()
 
@@ -206,8 +210,9 @@ class ControllerBrain:
                 "}"
             )
 
+            model_name = getattr(current_settings, "GEMINI_MODEL", "gemini-3.5-flash")
             model = genai.GenerativeModel(
-                "gemini-3.5-flash",
+                model_name,
                 generation_config=generation_config,
                 system_instruction=system_instruction
             )

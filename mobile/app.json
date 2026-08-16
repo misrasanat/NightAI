@@ -9,7 +9,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.misra.nightai",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "NightAI requires microphone access to listen for wake-words and transcribe voice commands."
+        "NSMicrophoneUsageDescription": "NightAI requires microphone access to listen for wake-words and transcribe voice commands.",
+        "UIBackgroundModes": [
+          "audio"
+        ]
       }
     },
     "android": {

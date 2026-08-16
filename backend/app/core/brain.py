@@ -334,6 +334,18 @@ class ControllerBrain:
             routing_info = await self.classify_audio_intent(audio_bytes, mime_type, context)
             transcript = routing_info.get("transcript", "")
             
+            # Wake-word verification: check if transcript contains 'night', 'hey night', etc.
+            cleaned_tx = transcript.lower().strip()
+            wake_word_detected = any(kw in cleaned_tx for kw in ["night", "knight", "nite"])
+
+            if not wake_word_detected:
+                agent_res = AgentResponse(
+                    success=True,
+                    message="No wake word detected.",
+                    data={"reply": "", "wake_word_detected": False, "routing": routing_info},
+                )
+                return transcript, agent_res
+
             agent_name = routing_info.get("agent")
             action = routing_info.get("action")
             params = routing_info.get("params", {})
@@ -345,19 +357,20 @@ class ControllerBrain:
                 agent_res = AgentResponse(
                     success=True,
                     message="General response generated.",
-                    data={"reply": reply, "routing": routing_info},
+                    data={"reply": reply, "wake_word_detected": True, "routing": routing_info},
                 )
             else:
                 agent = self.agents[agent_name]
                 try:
                     res = await agent.execute(action, params)
                     res.data["routing"] = routing_info
+                    res.data["wake_word_detected"] = True
                     agent_res = res
                 except Exception as e:
                     agent_res = AgentResponse(
                         success=False,
                         message=f"Error executing agent {agent_name}: {str(e)}",
-                        data={"reply": f"Could not perform action: {str(e)}", "routing": routing_info},
+                        data={"reply": f"Could not perform action: {str(e)}", "wake_word_detected": True, "routing": routing_info},
                     )
 
             # Log to SQLite

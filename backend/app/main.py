@@ -304,9 +304,12 @@ async def process_audio(
     except Exception as tts_err:
         print(f"TTS Error: {tts_err}")
         
+    wake_word_detected = agent_res.data.get("wake_word_detected", True)
+
     return {
         "success": agent_res.success,
         "message": agent_res.message,
+        "wake_word_detected": wake_word_detected,
         "query": query,
         "reply": reply,
         "audio_base64": audio_base64

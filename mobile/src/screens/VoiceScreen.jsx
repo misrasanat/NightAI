@@ -15,13 +15,37 @@ import * as Speech from "expo-speech";
 import * as FileSystem from "expo-file-system";
 import { BACKEND_URL } from "../config";
 
+const ACK_PHRASES = [
+  "On it!",
+  "Gotcha, give me a sec...",
+  "Right on it!",
+  "Working on that...",
+  "Got it!",
+  "Processing that now...",
+  "Sure thing, one second...",
+  "All over it!"
+];
+
 export default function VoiceScreen({ navigation }) {
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [transcript, setTranscript] = useState("Say \"Night\" or tap the microphone to begin.");
+  const [isAlwaysListening, setIsAlwaysListening] = useState(true);
+  const [transcript, setTranscript] = useState("Listening for command...");
   const [assistantReply, setAssistantReply] = useState("");
   
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
+  const isListeningRef = useRef(isListening);
+  const isAlwaysListeningRef = useRef(isAlwaysListening);
+  const recordingTimerRef = useRef(null);
+
+  useEffect(() => {
+    isListeningRef.current = isListening;
+  }, [isListening]);
+
+  useEffect(() => {
+    isAlwaysListeningRef.current = isAlwaysListening;
+  }, [isAlwaysListening]);
 
   // Animation refs for pulsing soundwave effect
   const pulseAnim1 = useRef(new Animated.Value(1)).current;
@@ -48,14 +72,14 @@ export default function VoiceScreen({ navigation }) {
           ]),
           Animated.sequence([
             Animated.timing(pulseAnim2, {
-              toValue: 2.2,
-              duration: 1800,
+              toValue: 2.0,
+              duration: 1200,
               easing: Easing.out(Easing.ease),
               useNativeDriver: true,
             }),
             Animated.timing(pulseAnim2, {
               toValue: 1.0,
-              duration: 1800,
+              duration: 1200,
               easing: Easing.in(Easing.ease),
               useNativeDriver: true,
             }),
@@ -63,8 +87,8 @@ export default function VoiceScreen({ navigation }) {
         ])
       ).start();
     } else {
-      pulseAnim1.setValue(1);
-      pulseAnim2.setValue(1);
+      pulseAnim1.setValue(1.0);
+      pulseAnim2.setValue(1.0);
     }
   }, [isListening]);
 
@@ -75,6 +99,7 @@ export default function VoiceScreen({ navigation }) {
         await setAudioModeAsync({
           playsInSilentMode: true,
           allowsRecording: true,
+          playThroughEarpiece: false,
         });
       } catch (err) {
         console.log("Error initializing audio mode:", err);
@@ -88,6 +113,7 @@ export default function VoiceScreen({ navigation }) {
   }, []);
 
   const cleanup = async () => {
+    if (recordingTimerRef.current) clearTimeout(recordingTimerRef.current);
     Speech.stop();
   };
 
@@ -95,6 +121,17 @@ export default function VoiceScreen({ navigation }) {
     try {
       // Stop any active speech output
       Speech.stop();
+
+      // Re-enable recording mode in audio session
+      try {
+        await setAudioModeAsync({
+          playsInSilentMode: true,
+          allowsRecording: true,
+          playThroughEarpiece: false,
+        });
+      } catch (modeErr) {
+        console.log("Error enabling recording audio mode:", modeErr);
+      }
 
       // Request microphone permissions
       const permission = await requestRecordingPermissionsAsync();
@@ -110,6 +147,14 @@ export default function VoiceScreen({ navigation }) {
       // Start recording
       await recorder.prepareToRecordAsync();
       await recorder.record();
+
+      // End-of-speech auto-stop timer (5 seconds)
+      if (recordingTimerRef.current) clearTimeout(recordingTimerRef.current);
+      recordingTimerRef.current = setTimeout(() => {
+        if (isListeningRef.current) {
+          stopRecording();
+        }
+      }, 5000);
     } catch (err) {
       console.error("Failed to start recording:", err);
       setIsListening(false);
@@ -118,6 +163,7 @@ export default function VoiceScreen({ navigation }) {
   };
 
   const stopRecording = async () => {
+    if (recordingTimerRef.current) clearTimeout(recordingTimerRef.current);
     if (!recorder.isRecording) return;
 
     setIsListening(false);
@@ -140,6 +186,14 @@ export default function VoiceScreen({ navigation }) {
       console.error("Failed to stop recording:", err);
       setTranscript("Failed to stop recording. Please try again.");
       setIsProcessing(false);
+    }
+  };
+
+  const triggerAutoRearm = () => {
+    if (isAlwaysListeningRef.current) {
+      setTimeout(() => {
+        startRecording();
+      }, 1000);
     }
   };
 
@@ -185,7 +239,27 @@ export default function VoiceScreen({ navigation }) {
 
       const data = await response.json();
       setTranscript(data.query || "No speech detected.");
-      setAssistantReply(data.reply || "No response received.");
+
+      // Verify Wake-Word presence ("Night", "Hey Night", etc.)
+      if (data.wake_word_detected === false || !data.reply) {
+        setAssistantReply("Listening for 'Night'...");
+        triggerAutoRearm();
+        return;
+      }
+
+      // Wake word verified! Set response text
+      setAssistantReply(data.reply);
+
+      // Switch iOS audio category to playback so sound routes through the main loud speaker instead of the phone earpiece
+      try {
+        await setAudioModeAsync({
+          playsInSilentMode: true,
+          allowsRecording: false,
+          playThroughEarpiece: false,
+        });
+      } catch (modeErr) {
+        console.log("Error switching to playback mode:", modeErr);
+      }
 
       // Synthesize sound playback
       if (data.audio_base64) {
@@ -196,6 +270,8 @@ export default function VoiceScreen({ navigation }) {
           pitch: 1.0,
           rate: 1.0,
           volume: 1.0,
+          onDone: triggerAutoRearm,
+          onStopped: triggerAutoRearm,
         });
       }
     } catch (err) {
@@ -222,6 +298,7 @@ export default function VoiceScreen({ navigation }) {
         if (status.didJustFinish) {
           player.release();
           subscription.remove();
+          triggerAutoRearm();
         }
       });
 

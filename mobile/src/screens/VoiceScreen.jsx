@@ -19,6 +19,7 @@ import {
 } from "expo-audio";
 import * as Speech from "expo-speech";
 import * as FileSystem from "expo-file-system/legacy";
+import { BACKEND_URL } from "../config";
 let ExpoSpeechRecognitionModule = null;
 let useSpeechRecognitionEvent = () => {};
 
@@ -176,12 +177,12 @@ export default function VoiceScreen({ navigation }) {
   };
 
   // =========================================================================
-  // STATE 1: PASSIVE WAKE-WORD LISTENER (Apple On-Device Local SFSpeechRecognizer)
+  // STATE 1: PASSIVE WAKE-WORD LISTENER (100% Pure Apple On-Device SFSpeechRecognizer)
   // =========================================================================
   const enterState1_Passive = async () => {
     clearStateTimer();
     setEngineState(EngineState.STATE_1_PASSIVE);
-    setStatusLabel("LISTENING FOR 'NIGHT' (LOCAL)");
+    setStatusLabel("LISTENING FOR 'NIGHT' (ON-DEVICE)");
     setTranscript("Listening for 'Night'...");
 
     try {
@@ -193,8 +194,8 @@ export default function VoiceScreen({ navigation }) {
 
       Speech.stop();
 
-      // Request and start Apple Native On-Device Speech Recognition (if native module present in build)
-      if (isNativeSpeechAvailable) {
+      // Start Apple Native On-Device Speech Recognition (Siri Engine)
+      if (ExpoSpeechRecognitionModule) {
         const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
         if (result.granted) {
           ExpoSpeechRecognitionModule.start({
@@ -202,57 +203,10 @@ export default function VoiceScreen({ navigation }) {
             interimResults: true,
             requiresOnDeviceRecognition: true, // 100% OFFLINE ON-DEVICE! 0 NETWORK CALLS!
           });
-          return;
         }
       }
-
-      // Safe Fallback for Expo Go (Local silence-filtered sampling)
-      await recorder.prepareToRecordAsync();
-      await recorder.record();
-      stateTimerRef.current = setTimeout(processState1_FallbackSample, 5000);
     } catch (err) {
-      console.log("State 1 Local Recognizer Error, using fallback:", err);
-      try {
-        await recorder.prepareToRecordAsync();
-        await recorder.record();
-        stateTimerRef.current = setTimeout(processState1_FallbackSample, 5000);
-      } catch (e) {
-        stateTimerRef.current = setTimeout(enterState1_Passive, 2000);
-      }
-    }
-  };
-
-  const processState1_FallbackSample = async () => {
-    try {
-      if (!recorder.isRecording) {
-        enterState1_Passive();
-        return;
-      }
-      await recorder.stop();
-      const uri = recorder.uri;
-      if (!uri) {
-        enterState1_Passive();
-        return;
-      }
-      const fileInfo = await FileSystem.getInfoAsync(uri);
-      if (!fileInfo.exists || fileInfo.size < 1000) {
-        setTimeout(enterState1_Passive, 1000);
-        return;
-      }
-      const data = await uploadAudioToBackend(uri);
-      if (!data || data.wake_word_detected === false || !data.query) {
-        setTimeout(enterState1_Passive, 1000);
-        return;
-      }
-      setTranscript(data.query);
-      if (data.reply && data.reply.trim().length > 0) {
-        pendingResponseRef.current = data;
-        enterState3_Ack(data);
-      } else {
-        enterState2_Collecting();
-      }
-    } catch (err) {
-      setTimeout(enterState1_Passive, 2000);
+      console.log("State 1 On-Device Recognizer Error:", err);
     }
   };
 

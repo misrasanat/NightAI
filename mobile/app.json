@@ -10,6 +10,7 @@
       "bundleIdentifier": "com.misra.nightai",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "NightAI requires microphone access to listen for wake-words and transcribe voice commands.",
+        "NSSpeechRecognitionUsageDescription": "NightAI uses Apple Speech Recognition to detect 'Night' and 'Hey Night' wake words locally on-device.",
         "UIBackgroundModes": [
           "audio"
         ]
@@ -23,7 +24,8 @@
       ]
     },
     "plugins": [
-      "expo-audio"
+      "expo-audio",
+      "expo-speech-recognition"
     ]
   }
 }

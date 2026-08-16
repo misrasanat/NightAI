@@ -19,11 +19,20 @@ import {
 } from "expo-audio";
 import * as Speech from "expo-speech";
 import * as FileSystem from "expo-file-system";
-import {
-  ExpoSpeechRecognitionModule,
-  useSpeechRecognitionEvent,
-} from "expo-speech-recognition";
-import { BACKEND_URL } from "../config";
+let ExpoSpeechRecognitionModule = null;
+let useSpeechRecognitionEvent = () => {};
+
+try {
+  const speechMod = require("expo-speech-recognition");
+  if (speechMod && speechMod.ExpoSpeechRecognitionModule) {
+    ExpoSpeechRecognitionModule = speechMod.ExpoSpeechRecognitionModule;
+  }
+  if (speechMod && speechMod.useSpeechRecognitionEvent) {
+    useSpeechRecognitionEvent = speechMod.useSpeechRecognitionEvent;
+  }
+} catch (e) {
+  console.log("ExpoSpeechRecognition native module not bundled in current runtime.");
+}
 
 const ACK_PHRASES = [
   "On it!",
@@ -55,33 +64,35 @@ export default function VoiceScreen({ navigation }) {
   const stateTimerRef = useRef(null);
   const pendingResponseRef = useRef(null);
 
+  const isNativeSpeechAvailable = !!(ExpoSpeechRecognitionModule && ExpoSpeechRecognitionModule.start);
+
   useEffect(() => {
     engineStateRef.current = engineState;
   }, [engineState]);
 
   // On-Device Speech Recognition Event Listener (Apple Native SFSpeechRecognizer)
-  useSpeechRecognitionEvent("result", (event) => {
-    if (engineStateRef.current !== EngineState.STATE_1_PASSIVE) return;
-    const lastResult = event.results[event.results.length - 1];
-    if (lastResult && lastResult.transcript) {
-      const text = lastResult.transcript.toLowerCase();
-      console.log("Local On-Device Speech:", text);
-      if (text.includes("night") || text.includes("knight") || text.includes("nite")) {
-        // ON-DEVICE WAKE WORD DETECTED! 0 KB NETWORK DATA, 0 GEMINI API CALLS!
-        try {
-          ExpoSpeechRecognitionModule.stop();
-        } catch (e) {}
-        enterState2_Collecting();
+  try {
+    useSpeechRecognitionEvent("result", (event) => {
+      if (engineStateRef.current !== EngineState.STATE_1_PASSIVE) return;
+      const lastResult = event?.results?.[event.results.length - 1];
+      if (lastResult && lastResult.transcript) {
+        const text = lastResult.transcript.toLowerCase();
+        console.log("Local On-Device Speech:", text);
+        if (text.includes("night") || text.includes("knight") || text.includes("nite")) {
+          try {
+            ExpoSpeechRecognitionModule.stop();
+          } catch (e) {}
+          enterState2_Collecting();
+        }
       }
-    }
-  });
+    });
 
-  useSpeechRecognitionEvent("error", (event) => {
-    if (engineStateRef.current === EngineState.STATE_1_PASSIVE) {
-      // If local speech recognizer encounters a quiet pause, restart it smoothly
-      setTimeout(enterState1_Passive, 1000);
-    }
-  });
+    useSpeechRecognitionEvent("error", (event) => {
+      if (engineStateRef.current === EngineState.STATE_1_PASSIVE) {
+        setTimeout(enterState1_Passive, 1000);
+      }
+    });
+  } catch (e) {}
 
   // Animation refs for pulsing soundwave effect
   const pulseAnim1 = useRef(new Animated.Value(1)).current;
@@ -182,20 +193,23 @@ export default function VoiceScreen({ navigation }) {
 
       Speech.stop();
 
-      // Request and start Apple Native On-Device Speech Recognition
-      const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-      if (result.granted) {
-        ExpoSpeechRecognitionModule.start({
-          lang: "en-US",
-          interimResults: true,
-          requiresOnDeviceRecognition: true, // 100% OFFLINE ON-DEVICE! 0 NETWORK CALLS!
-        });
-      } else {
-        // Fallback to local audio recorder sampling if permission not granted
-        await recorder.prepareToRecordAsync();
-        await recorder.record();
-        stateTimerRef.current = setTimeout(processState1_FallbackSample, 5000);
+      // Request and start Apple Native On-Device Speech Recognition (if native module present in build)
+      if (isNativeSpeechAvailable) {
+        const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+        if (result.granted) {
+          ExpoSpeechRecognitionModule.start({
+            lang: "en-US",
+            interimResults: true,
+            requiresOnDeviceRecognition: true, // 100% OFFLINE ON-DEVICE! 0 NETWORK CALLS!
+          });
+          return;
+        }
       }
+
+      // Safe Fallback for Expo Go (Local silence-filtered sampling)
+      await recorder.prepareToRecordAsync();
+      await recorder.record();
+      stateTimerRef.current = setTimeout(processState1_FallbackSample, 5000);
     } catch (err) {
       console.log("State 1 Local Recognizer Error, using fallback:", err);
       try {

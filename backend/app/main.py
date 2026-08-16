@@ -49,12 +49,27 @@ stt = STTService()
 # Initialize Local Offline Vosk Wake-Word Model (0 Gemini API calls)
 import wave
 import subprocess
+import urllib.request
+import zipfile
+
 try:
     from vosk import Model as VoskModel, KaldiRecognizer
     VOSK_MODEL_PATH = os.path.join(os.path.dirname(__file__), "vosk_model")
+    if not os.path.exists(VOSK_MODEL_PATH):
+        print("Auto-downloading Vosk offline model for Render server...")
+        zip_path = "/tmp/vosk_model.zip"
+        urllib.request.urlretrieve("https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip", zip_path)
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(os.path.dirname(__file__))
+        extracted = os.path.join(os.path.dirname(__file__), "vosk-model-small-en-us-0.15")
+        if os.path.exists(extracted):
+            os.rename(extracted, VOSK_MODEL_PATH)
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
+
     if os.path.exists(VOSK_MODEL_PATH):
         vosk_model_instance = VoskModel(VOSK_MODEL_PATH)
-        print("Vosk Offline Local Model loaded successfully on Mac CPU!")
+        print("Vosk Offline Model loaded successfully!")
     else:
         vosk_model_instance = None
 except Exception as vosk_err:
@@ -64,7 +79,7 @@ except Exception as vosk_err:
 
 @app.post("/api/v1/detect-wake-word")
 async def detect_wake_word_local(audio: UploadFile = File(...)):
-    """Processes incoming audio locally on Mac CPU using Vosk offline STT.
+    """Processes incoming audio using Vosk offline STT.
     0 Gemini API Calls. 0 Cloud Cost. 0 Rate Limits.
     """
     if not vosk_model_instance:
@@ -77,12 +92,21 @@ async def detect_wake_word_local(audio: UploadFile = File(...)):
         with open(temp_input, "wb") as f:
             f.write(audio_bytes)
 
-        subprocess.run(
-            ["afconvert", "-f", "WAVE", "-c", "1", "-d", "LEI16@16000", temp_input, temp_wav],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
+        # Cross-platform Audio Conversion (afconvert on macOS vs ffmpeg on Render Linux)
+        try:
+            subprocess.run(
+                ["afconvert", "-f", "WAVE", "-c", "1", "-d", "LEI16@16000", temp_input, temp_wav],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        except Exception:
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", temp_input, "-ar", "16000", "-ac", "1", temp_wav],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
 
         wf = wave.open(temp_wav, "rb")
         rec = KaldiRecognizer(vosk_model_instance, wf.getframerate())

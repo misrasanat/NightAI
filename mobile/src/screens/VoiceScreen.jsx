@@ -182,8 +182,8 @@ export default function VoiceScreen({ navigation }) {
   const enterState1_Passive = async () => {
     clearStateTimer();
     setEngineState(EngineState.STATE_1_PASSIVE);
-    setStatusLabel("LISTENING FOR 'NIGHT' (ON-DEVICE SIRI)");
-    setTranscript("Listening for 'Night'...");
+    setStatusLabel("LISTENING FOR 'NIGHT' (LOCAL STT)");
+    setTranscript("Say 'Night' or 'Hey Night' to trigger...");
 
     try {
       await setAudioModeAsync({
@@ -194,19 +194,105 @@ export default function VoiceScreen({ navigation }) {
 
       Speech.stop();
 
-      // Start Apple Native On-Device Speech Recognition (Siri Engine)
-      if (ExpoSpeechRecognitionModule && ExpoSpeechRecognitionModule.start) {
+      // Check if native Siri speech recognizer is available
+      if (isNativeSpeechAvailable) {
         const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
         if (result.granted) {
           ExpoSpeechRecognitionModule.start({
             lang: "en-US",
             interimResults: true,
-            requiresOnDeviceRecognition: true, // 100% OFFLINE ON-DEVICE SIRI ENGINE! 0 NETWORK CALLS!
+            requiresOnDeviceRecognition: true,
           });
+          return;
         }
       }
+
+      // Hands-Free Audio Listener (0 Gemini API calls - Uses Local Mac Vosk Engine)
+      await recorder.prepareToRecordAsync();
+      await recorder.record();
+
+      stateTimerRef.current = setTimeout(processState1_LocalWakeWordSample, 3500);
     } catch (err) {
-      console.log("State 1 On-Device Speech Error:", err);
+      console.log("State 1 Error:", err);
+      stateTimerRef.current = setTimeout(enterState1_Passive, 2000);
+    }
+  };
+
+  const processState1_LocalWakeWordSample = async () => {
+    try {
+      if (engineStateRef.current !== EngineState.STATE_1_PASSIVE) return;
+
+      if (!recorder.isRecording) {
+        enterState1_Passive();
+        return;
+      }
+
+      await recorder.stop();
+      const uri = recorder.uri;
+      if (!uri) {
+        enterState1_Passive();
+        return;
+      }
+
+      // Local Silence Filter: Skip tiny files (<1KB) locally to save bandwidth
+      const fileInfo = await FileSystem.getInfoAsync(uri);
+      if (!fileInfo.exists || fileInfo.size < 1000) {
+        setTimeout(enterState1_Passive, 400);
+        return;
+      }
+
+      // POST to Local Vosk Wake-Word Endpoint (0 Gemini API calls!)
+      const data = await uploadAudioToWakeWordEndpoint(uri);
+
+      if (!data || data.wake_word_detected === false) {
+        // No wake word spoken -> Continue listening hands-free
+        setTimeout(enterState1_Passive, 400);
+        return;
+      }
+
+      // 0-GEMINI HANDS-FREE WAKE WORD DETECTED!
+      console.log("Local Vosk Wake Word Detected:", data.transcript);
+      setTranscript(data.transcript || "Hey Night");
+
+      // Go to State 2 to collect command
+      enterState2_Collecting();
+    } catch (err) {
+      console.log("Local Wake-Word Processing Error:", err);
+      setTimeout(enterState1_Passive, 2000);
+    }
+  };
+
+  const uploadAudioToWakeWordEndpoint = async (uri) => {
+    try {
+      const formData = new FormData();
+      const fileUriParts = uri.split("/");
+      const fileName = fileUriParts[fileUriParts.length - 1];
+
+      let mimeType = "audio/m4a";
+      if (fileName.endsWith(".wav")) mimeType = "audio/wav";
+      else if (fileName.endsWith(".caf")) mimeType = "audio/caf";
+      else if (fileName.endsWith(".mp4")) mimeType = "audio/mp4";
+      else if (fileName.endsWith(".mp3")) mimeType = "audio/mp3";
+
+      formData.append("audio", {
+        uri: uri,
+        name: fileName,
+        type: mimeType,
+      });
+
+      const response = await fetch(`${BACKEND_URL}/api/v1/detect-wake-word`, {
+        method: "POST",
+        body: formData,
+        headers: {
+          Accept: "application/json",
+        },
+      });
+
+      if (!response.ok) return null;
+      return await response.json();
+    } catch (err) {
+      console.log("Wake-Word Endpoint Error:", err);
+      return null;
     }
   };
 

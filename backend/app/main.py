@@ -46,6 +46,72 @@ brain = ControllerBrain()
 tts = TTSService()
 stt = STTService()
 
+# Initialize Local Offline Vosk Wake-Word Model (0 Gemini API calls)
+import wave
+import subprocess
+try:
+    from vosk import Model as VoskModel, KaldiRecognizer
+    VOSK_MODEL_PATH = os.path.join(os.path.dirname(__file__), "vosk_model")
+    if os.path.exists(VOSK_MODEL_PATH):
+        vosk_model_instance = VoskModel(VOSK_MODEL_PATH)
+        print("Vosk Offline Local Model loaded successfully on Mac CPU!")
+    else:
+        vosk_model_instance = None
+except Exception as vosk_err:
+    print(f"Vosk Model initialization note: {vosk_err}")
+    vosk_model_instance = None
+
+
+@app.post("/api/v1/detect-wake-word")
+async def detect_wake_word_local(audio: UploadFile = File(...)):
+    """Processes incoming audio locally on Mac CPU using Vosk offline STT.
+    0 Gemini API Calls. 0 Cloud Cost. 0 Rate Limits.
+    """
+    if not vosk_model_instance:
+        return {"wake_word_detected": False, "transcript": "", "error": "Vosk model not loaded"}
+
+    try:
+        audio_bytes = await audio.read()
+        temp_input = "/tmp/vosk_input.m4a"
+        temp_wav = "/tmp/vosk_input.wav"
+        with open(temp_input, "wb") as f:
+            f.write(audio_bytes)
+
+        subprocess.run(
+            ["afconvert", "-f", "WAVE", "-c", "1", "-d", "LEI16@16000", temp_input, temp_wav],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+
+        wf = wave.open(temp_wav, "rb")
+        rec = KaldiRecognizer(vosk_model_instance, wf.getframerate())
+
+        transcript_text = ""
+        while True:
+            data = wf.readframes(4000)
+            if len(data) == 0:
+                break
+            if rec.AcceptWaveform(data):
+                res = json.loads(rec.Result())
+                transcript_text += " " + res.get("text", "")
+
+        final_res = json.loads(rec.FinalResult())
+        transcript_text += " " + final_res.get("text", "")
+        wf.close()
+
+        cleaned_text = transcript_text.lower().strip()
+        wake_word_detected = any(kw in cleaned_text for kw in ["night", "knight", "nite", "hey night", "hi night", "ok night"])
+
+        return {
+            "wake_word_detected": wake_word_detected,
+            "transcript": cleaned_text,
+            "local_offline": True
+        }
+    except Exception as err:
+        print(f"Local Vosk detection error: {err}")
+        return {"wake_word_detected": False, "transcript": "", "error": str(err)}
+
 
 # API Payload Schemas
 class ProcessRequest(BaseModel):

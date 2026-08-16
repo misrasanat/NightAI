@@ -191,10 +191,11 @@ export default function VoiceScreen({ navigation }) {
       if (data.audio_base64) {
         await playBase64Audio(data.audio_base64);
       } else {
-        // Fallback to Native Speech
+        // Fallback to Native Speech with max volume
         Speech.speak(data.reply, {
           pitch: 1.0,
           rate: 1.0,
+          volume: 1.0,
         });
       }
     } catch (err) {
@@ -214,6 +215,7 @@ export default function VoiceScreen({ navigation }) {
       });
 
       const player = createAudioPlayer({ uri: tempFile });
+      player.volume = 1.0;
       player.play();
 
       const subscription = player.addListener("playbackStatusUpdate", (status) => {

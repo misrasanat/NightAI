@@ -182,7 +182,7 @@ export default function VoiceScreen({ navigation }) {
   const enterState1_Passive = async () => {
     clearStateTimer();
     setEngineState(EngineState.STATE_1_PASSIVE);
-    setStatusLabel("LISTENING FOR 'NIGHT' (ON-DEVICE)");
+    setStatusLabel("LISTENING FOR 'NIGHT' (ON-DEVICE SIRI)");
     setTranscript("Listening for 'Night'...");
 
     try {
@@ -195,18 +195,18 @@ export default function VoiceScreen({ navigation }) {
       Speech.stop();
 
       // Start Apple Native On-Device Speech Recognition (Siri Engine)
-      if (ExpoSpeechRecognitionModule) {
+      if (ExpoSpeechRecognitionModule && ExpoSpeechRecognitionModule.start) {
         const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
         if (result.granted) {
           ExpoSpeechRecognitionModule.start({
             lang: "en-US",
             interimResults: true,
-            requiresOnDeviceRecognition: true, // 100% OFFLINE ON-DEVICE! 0 NETWORK CALLS!
+            requiresOnDeviceRecognition: true, // 100% OFFLINE ON-DEVICE SIRI ENGINE! 0 NETWORK CALLS!
           });
         }
       }
     } catch (err) {
-      console.log("State 1 On-Device Recognizer Error:", err);
+      console.log("State 1 On-Device Speech Error:", err);
     }
   };
 

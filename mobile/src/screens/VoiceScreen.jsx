@@ -18,7 +18,7 @@ import {
   setAudioModeAsync,
 } from "expo-audio";
 import * as Speech from "expo-speech";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 let ExpoSpeechRecognitionModule = null;
 let useSpeechRecognitionEvent = () => {};
 
@@ -235,7 +235,7 @@ export default function VoiceScreen({ navigation }) {
         return;
       }
       const fileInfo = await FileSystem.getInfoAsync(uri);
-      if (!fileInfo.exists || fileInfo.size < 10000) {
+      if (!fileInfo.exists || fileInfo.size < 1000) {
         setTimeout(enterState1_Passive, 1000);
         return;
       }

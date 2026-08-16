@@ -270,8 +270,7 @@ async def process_audio(
       audio: UploadFile = File(...),
       context: str = Form(None)
 ):
-    """Receives an audio file, transcribes it using STTService,
-    runs the text query through ControllerBrain with context,
+    """Receives an audio file and executes single-pass transcription + intent routing using ControllerBrain,
     synthesizes speech using TTSService (optional),
     and returns the transcribed text, reply, and optional audio.
     """
@@ -281,28 +280,22 @@ async def process_audio(
     except Exception as read_err:
         raise HTTPException(status_code=400, detail=f"Failed to read audio file: {read_err}")
         
-    # 2. Transcribe using STTService
-    try:
-        query = await stt.transcribe_audio_file(audio_bytes, mime_type=audio.content_type)
-    except Exception as stt_err:
-        print(f"STT Error: {stt_err}")
-        query = f"Error transcribing audio: {stt_err}"
-        
-    # 3. Parse context if provided
+    # 2. Parse context if provided
     context_dict = {}
     if context:
         try:
             context_dict = json.loads(context)
         except Exception as json_err:
             print(f"Failed to parse context JSON: {json_err}")
-            
-    # 4. Process transcribed query through brain
-    agent_res = await brain.execute_workflow(query, context=context_dict)
+
+    # 3. Single-pass audio execution (transcribe + route in 1 LLM request)
+    mime_type = audio.content_type or "audio/m4a"
+    query, agent_res = await brain.execute_audio_workflow(audio_bytes, mime_type=mime_type, context=context_dict)
     
-    # 5. Resolve text reply
+    # 4. Resolve text reply
     reply = agent_res.data.get("reply", agent_res.message)
     
-    # 6. Optional: Generate speech via ElevenLabs TTS
+    # 5. Optional: Generate speech via ElevenLabs TTS
     audio_base64 = None
     try:
         tts_audio_bytes = await tts.synthesize_speech(reply)

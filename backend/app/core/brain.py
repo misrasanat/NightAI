@@ -11,7 +11,8 @@ from app.db.database import InteractionLog, UserPreferences, engine
 from app.agents.communication import CommunicationAgent
 
 
-class RoutingDecision(BaseModel):
+class AudioRoutingDecision(BaseModel):
+    transcript: str = Field(description="Exact speech-to-text transcription of the audio")
     intent: str = Field(description="The matching intent (e.g., MusicIntent, CalendarIntent, NotesIntent, EmailIntent, GeneralChatIntent)")
     agent: Optional[str] = Field(None, description="The agent to route to: MusicAgent, CalendarAgent, NotesAgent, CommunicationAgent, or null")
     action: str = Field(description="The action name matching the agent actions, or 'chat' for GeneralChatIntent")
@@ -19,6 +20,14 @@ class RoutingDecision(BaseModel):
     response: Optional[str] = Field(None, description="The conversational chat response to return to the user if action is 'chat' or routing is not triggered / agent is inactive")
     explanation: str = Field(description="Brief reasoning behind the routing decision")
 
+
+class RoutingDecision(BaseModel):
+    intent: str = Field(description="The matching intent (e.g., MusicIntent, CalendarIntent, NotesIntent, EmailIntent, GeneralChatIntent)")
+    agent: Optional[str] = Field(None, description="The agent to route to: MusicAgent, CalendarAgent, NotesAgent, CommunicationAgent, or null")
+    action: str = Field(description="The action name matching the agent actions, or 'chat' for GeneralChatIntent")
+    params: Dict[str, Any] = Field(default_factory=dict, description="Parameters object required for the action")
+    response: Optional[str] = Field(None, description="The conversational chat response to return to the user if action is 'chat' or routing is not triggered / agent is inactive")
+    explanation: str = Field(description="Brief reasoning behind the routing decision")
 
 
 def clean_schema(schema: Any) -> Any:
@@ -128,6 +137,84 @@ class ControllerBrain:
         except Exception as e:
             print(f"Error fetching conversation history: {e}")
             return "No previous conversation history."
+
+    async def classify_audio_intent(self, audio_bytes: bytes, mime_type: str = "audio/m4a", context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Classifies audio input directly into transcript, intent, agent, action, and arguments in a single pass."""
+        if context is None:
+            context = {}
+
+        current_settings = get_settings()
+        api_key = current_settings.GEMINI_API_KEY
+        if not api_key:
+            return {
+                "transcript": "Error: Gemini API key not configured.",
+                "intent": "GeneralChatIntent",
+                "agent": None,
+                "action": "chat",
+                "params": {"response": "Gemini API key not configured."},
+                "explanation": "Gemini API key not configured.",
+            }
+
+        genai.configure(api_key=api_key)
+        capabilities_status = self.get_system_capabilities_status()
+        history = self.get_recent_conversation_history()
+
+        try:
+            generation_config = {
+                "response_mime_type": "application/json",
+                "response_schema": clean_schema(AudioRoutingDecision.model_json_schema())
+            }
+
+            system_instruction = (
+                "You are the Controller Brain of NightAI, a personal operating system voice assistant named 'Night'.\n"
+                "Your job is to transcribe the spoken audio EXACTLY into 'transcript', analyze the user's query, and output a structured JSON routing decision.\n\n"
+                "System State & Context:\n"
+                f"- User's Local Time: {context.get('local_time', 'Unknown')}\n"
+                f"- Current App Screen: {context.get('current_screen', 'VoiceScreen')}\n"
+                f"- System Capabilities Status:\n{capabilities_status}\n\n"
+                f"- Recent Conversation History:\n{history}\n\n"
+                "Output EXACTLY this JSON structure:\n"
+                "{\n"
+                "  \"transcript\": string (exact speech-to-text transcript of audio),\n"
+                "  \"intent\": \"MusicIntent\" | \"CalendarIntent\" | \"NotesIntent\" | \"EmailIntent\" | \"GeneralChatIntent\",\n"
+                "  \"agent\": \"MusicAgent\" | \"CalendarAgent\" | \"NotesAgent\" | \"CommunicationAgent\" | null,\n"
+                "  \"action\": string (action name),\n"
+                "  \"params\": object (parameters),\n"
+                "  \"response\": string (conversational response as 'Night'),\n"
+                "  \"explanation\": string (reasoning)\n"
+                "}"
+            )
+
+            model_name = getattr(current_settings, "GEMINI_MODEL", "gemini-3.5-flash")
+            model = genai.GenerativeModel(
+                model_name,
+                generation_config=generation_config,
+                system_instruction=system_instruction
+            )
+
+            audio_part = {
+                "mime_type": mime_type,
+                "data": audio_bytes
+            }
+
+            prompt = "Transcribe this audio exactly into transcript field, and make the intent routing decision."
+            response = await model.generate_content_async([audio_part, prompt])
+
+            raw_text = response.text.strip()
+            start_idx = raw_text.find("{")
+            end_idx = raw_text.rfind("}")
+
+            if start_idx != -1 and end_idx != -1:
+                clean_json = raw_text[start_idx:end_idx + 1]
+            else:
+                clean_json = raw_text
+
+            parsed_result = json.loads(clean_json)
+            return parsed_result
+
+        except Exception as e:
+            print(f"Single-pass audio classification failed: {e}")
+            raise e
 
     async def classify_intent(self, text: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Classifies user speech-to-text input into an intent, choosing an agent,
@@ -241,6 +328,62 @@ class ControllerBrain:
                 "explanation": f"Failed to parse query via Gemini: {str(e)}",
             }
 
+    async def execute_audio_workflow(self, audio_bytes: bytes, mime_type: str = "audio/m4a", context: Dict[str, Any] = None) -> tuple[str, AgentResponse]:
+        """Main single-pass entry point for audio. Returns (transcript, AgentResponse)."""
+        try:
+            routing_info = await self.classify_audio_intent(audio_bytes, mime_type, context)
+            transcript = routing_info.get("transcript", "")
+            
+            agent_name = routing_info.get("agent")
+            action = routing_info.get("action")
+            params = routing_info.get("params", {})
+
+            if action == "chat" or not agent_name or agent_name not in self.agents:
+                reply = routing_info.get("response") or params.get("response")
+                if not reply or reply.startswith("Acknowledged"):
+                    reply = f"I heard you say '{transcript}'. Systems are online and ready — how can I help you?"
+                agent_res = AgentResponse(
+                    success=True,
+                    message="General response generated.",
+                    data={"reply": reply, "routing": routing_info},
+                )
+            else:
+                agent = self.agents[agent_name]
+                try:
+                    res = await agent.execute(action, params)
+                    res.data["routing"] = routing_info
+                    agent_res = res
+                except Exception as e:
+                    agent_res = AgentResponse(
+                        success=False,
+                        message=f"Error executing agent {agent_name}: {str(e)}",
+                        data={"reply": f"Could not perform action: {str(e)}", "routing": routing_info},
+                    )
+
+            # Log to SQLite
+            log_reply = agent_res.data.get("reply", agent_res.message)
+            try:
+                with Session(engine) as session:
+                    log_entry = InteractionLog(
+                        user_query=transcript,
+                        intent=routing_info.get("intent", "Unknown"),
+                        response=log_reply,
+                        success=agent_res.success
+                    )
+                    session.add(log_entry)
+                    session.commit()
+            except Exception as db_err:
+                print(f"Database logging failed: {db_err}")
+
+            return transcript, agent_res
+        except Exception as err:
+            print(f"Falling back to 2-step STT pipeline due to: {err}")
+            from app.services.stt import STTService
+            stt_service = STTService()
+            transcript = await stt_service.transcribe_audio_file(audio_bytes, mime_type)
+            agent_res = await self.execute_workflow(transcript, context)
+            return transcript, agent_res
+
     async def execute_workflow(self, text: str, context: Dict[str, Any] = None) -> AgentResponse:
         """Main entry point. Receives text, routes to the appropriate agent,
         logs the execution in the database, and returns the unified response.
@@ -262,7 +405,9 @@ class ControllerBrain:
                     data={"reply": reply, "routing": routing_info},
                 )
             else:
-                reply = routing_info.get("response") or params.get("response") or f"Acknowledged: '{text}'. Agent routing not triggered."
+                reply = routing_info.get("response") or params.get("response")
+                if not reply or reply.startswith("Acknowledged"):
+                    reply = f"I heard you say '{text}'. Systems are online and ready — how can I help you?"
                 agent_res = AgentResponse(
                     success=True,
                     message="General response generated.",
@@ -301,5 +446,3 @@ class ControllerBrain:
             print(f"Database logging failed: {db_err}")
 
         return agent_res
-
-

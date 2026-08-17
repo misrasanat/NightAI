@@ -189,8 +189,8 @@ class ControllerBrain:
                 "mime_type": mime_type,
                 "data": audio_bytes
             }
-            primary_model = "gemini-2.0-flash"
-            models_to_try = [primary_model, "gemini-1.5-flash", "gemini-1.5-pro"]
+            primary_model = "gemini-3.5-flash"
+            models_to_try = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
             response = None
             last_err = None
 
@@ -316,7 +316,7 @@ class ControllerBrain:
                 "}"
             )
 
-            model_name = "gemini-2.0-flash"
+            model_name = "gemini-3.5-flash"
             model = genai.GenerativeModel(
                 model_name,
                 generation_config=generation_config,

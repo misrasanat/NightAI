@@ -185,20 +185,32 @@ class ControllerBrain:
                 "}"
             )
 
-            model_name = getattr(current_settings, "GEMINI_MODEL", "gemini-3.5-flash")
-            model = genai.GenerativeModel(
-                model_name,
-                generation_config=generation_config,
-                system_instruction=system_instruction
-            )
-
             audio_part = {
                 "mime_type": mime_type,
                 "data": audio_bytes
             }
+            primary_model = getattr(current_settings, "GEMINI_MODEL", "gemini-3.5-flash")
+            models_to_try = [primary_model, "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"]
+            response = None
+            last_err = None
 
-            prompt = "Transcribe this audio exactly into transcript field, and make the intent routing decision."
-            response = await model.generate_content_async([audio_part, prompt])
+            for m_name in models_to_try:
+                try:
+                    model = genai.GenerativeModel(
+                        m_name,
+                        generation_config=generation_config,
+                        system_instruction=system_instruction
+                    )
+                    response = await model.generate_content_async([audio_part, prompt])
+                    if response and response.text:
+                        break
+                except Exception as m_err:
+                    last_err = m_err
+                    print(f"Gemini model {m_name} call failed: {m_err}. Trying fallback...")
+                    continue
+
+            if not response or not response.text:
+                raise last_err or Exception("All Gemini models failed to respond.")
 
             raw_text = response.text.strip()
             start_idx = raw_text.find("{")
@@ -214,7 +226,14 @@ class ControllerBrain:
 
         except Exception as e:
             print(f"Single-pass audio classification failed: {e}")
-            raise e
+            return {
+                "transcript": "Error processing command.",
+                "intent": "GeneralChatIntent",
+                "agent": None,
+                "action": "chat",
+                "params": {"response": f"I heard your command, but Gemini AI quota is cooling down: {str(e)}"},
+                "explanation": f"API quota exception: {str(e)}",
+            }
 
     async def classify_intent(self, text: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Classifies user speech-to-text input into an intent, choosing an agent,
@@ -334,18 +353,6 @@ class ControllerBrain:
             routing_info = await self.classify_audio_intent(audio_bytes, mime_type, context)
             transcript = routing_info.get("transcript", "")
             
-            # Wake-word verification: check if transcript contains 'night', 'hey night', etc.
-            cleaned_tx = transcript.lower().strip()
-            wake_word_detected = any(kw in cleaned_tx for kw in ["night", "knight", "nite"])
-
-            if not wake_word_detected:
-                agent_res = AgentResponse(
-                    success=True,
-                    message="No wake word detected.",
-                    data={"reply": "", "wake_word_detected": False, "routing": routing_info},
-                )
-                return transcript, agent_res
-
             agent_name = routing_info.get("agent")
             action = routing_info.get("action")
             params = routing_info.get("params", {})

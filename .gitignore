@@ -240,4 +240,5 @@ android/
 *.sqlite
 data/
 chroma_db/
+backend/app/vosk_model/
 

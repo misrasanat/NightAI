@@ -307,7 +307,6 @@ export default function VoiceScreen({ navigation }) {
     setAssistantReply("Yes? I'm listening...");
 
     try {
-      // Stop local wake-word speech recognizer to record high-quality command audio
       try {
         ExpoSpeechRecognitionModule.stop();
       } catch (e) {}
@@ -318,7 +317,31 @@ export default function VoiceScreen({ navigation }) {
         playThroughEarpiece: false,
       });
 
-      Speech.speak("Yes?", { pitch: 1.0, rate: 1.1, volume: 1.0 });
+      // Speak "Yes?" and ONLY start recording AFTER speech completes to prevent audio overlap
+      Speech.speak("Yes?", {
+        pitch: 1.0,
+        rate: 1.1,
+        volume: 1.0,
+        onDone: startRecordingUserCommand,
+        onStopped: startRecordingUserCommand,
+      });
+
+      // Safety timeout if Speech.speak onDone doesn't fire
+      stateTimerRef.current = setTimeout(() => {
+        if (engineStateRef.current === EngineState.STATE_2_COLLECTING && !recorder.isRecording) {
+          startRecordingUserCommand();
+        }
+      }, 1200);
+    } catch (err) {
+      console.log("State 2 Error:", err);
+      enterState5_Resetting();
+    }
+  };
+
+  const startRecordingUserCommand = async () => {
+    try {
+      if (engineStateRef.current !== EngineState.STATE_2_COLLECTING) return;
+      if (recorder.isRecording) return;
 
       await recorder.prepareToRecordAsync();
       await recorder.record();
@@ -328,8 +351,8 @@ export default function VoiceScreen({ navigation }) {
         if (engineStateRef.current !== EngineState.STATE_2_COLLECTING) return;
         await processState2_Command();
       }, 4500);
-    } catch (err) {
-      console.log("State 2 Error:", err);
+    } catch (e) {
+      console.log("Error starting command recording:", e);
       enterState5_Resetting();
     }
   };
@@ -348,12 +371,20 @@ export default function VoiceScreen({ navigation }) {
         return;
       }
 
+      // Check audio file size locally before sending 1 single request
+      const fileInfo = await FileSystem.getInfoAsync(uri);
+      if (!fileInfo.exists || fileInfo.size < 1500) {
+        // No command spoken (silent) -> Reset cleanly without making API call
+        enterState5_Resetting();
+        return;
+      }
+
       const data = await uploadAudioToBackend(uri);
       if (data && data.query) {
         setTranscript(data.query);
       }
 
-      if (data && data.reply) {
+      if (data && data.reply && data.reply.trim().length > 0) {
         pendingResponseRef.current = data;
         enterState3_Ack(data);
       } else {

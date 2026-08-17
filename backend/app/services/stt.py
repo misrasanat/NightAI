@@ -20,7 +20,7 @@ class STTService:
 
         try:
             genai.configure(api_key=api_key)
-            model_name = getattr(current_settings, "GEMINI_MODEL", "gemini-3.5-flash")
+            model_name = getattr(current_settings, "GEMINI_MODEL", "gemini-2.0-flash")
             model = genai.GenerativeModel(model_name)
             
             audio_part = {

@@ -189,8 +189,8 @@ class ControllerBrain:
                 "mime_type": mime_type,
                 "data": audio_bytes
             }
-            primary_model = getattr(current_settings, "GEMINI_MODEL", "gemini-3.5-flash")
-            models_to_try = [primary_model, "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"]
+            primary_model = getattr(current_settings, "GEMINI_MODEL", "gemini-2.0-flash")
+            models_to_try = [primary_model, "gemini-1.5-flash", "gemini-1.5-pro"]
             response = None
             last_err = None
 
@@ -316,7 +316,7 @@ class ControllerBrain:
                 "}"
             )
 
-            model_name = getattr(current_settings, "GEMINI_MODEL", "gemini-3.5-flash")
+            model_name = getattr(current_settings, "GEMINI_MODEL", "gemini-2.0-flash")
             model = genai.GenerativeModel(
                 model_name,
                 generation_config=generation_config,

@@ -189,6 +189,14 @@ class ControllerBrain:
                 "mime_type": mime_type,
                 "data": audio_bytes
             }
+
+            # Prompt for multimodal audio processing with structured output
+            prompt = (
+                "Listen to this audio recording. "
+                "Transcribe the exact spoken words into the 'transcript' field. "
+                "Then analyze the user's intent and provide the structured routing decision as specified in the system instructions."
+            )
+
             primary_model = "gemini-3.5-flash"
             models_to_try = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
             response = None

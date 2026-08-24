@@ -64,6 +64,8 @@ export default function VoiceScreen({ navigation }) {
   const engineStateRef = useRef(engineState);
   const stateTimerRef = useRef(null);
   const pendingResponseRef = useRef(null);
+  const isProcessingApiCallRef = useRef(false); // Prevent concurrent API calls
+  const lastApiCallTimeRef = useRef(0); // Track last API call timestamp
 
   const isNativeSpeechAvailable = !!(ExpoSpeechRecognitionModule && ExpoSpeechRecognitionModule.start);
 
@@ -242,6 +244,7 @@ export default function VoiceScreen({ navigation }) {
       }
 
       // POST to Local Vosk Wake-Word Endpoint (0 Gemini API calls!)
+      console.log("📡 Sending to local Vosk wake-word endpoint (no Gemini API)");
       const data = await uploadAudioToWakeWordEndpoint(uri);
 
       if (!data || data.wake_word_detected === false) {
@@ -379,7 +382,31 @@ export default function VoiceScreen({ navigation }) {
         return;
       }
 
+      // SAFEGUARD: Prevent concurrent API calls (critical for avoiding quota spam)
+      if (isProcessingApiCallRef.current) {
+        console.log("⚠️ API call already in progress, skipping duplicate");
+        enterState5_Resetting();
+        return;
+      }
+
+      // SAFEGUARD: Rate limit - minimum 2 seconds between Gemini API calls
+      const now = Date.now();
+      const timeSinceLastCall = now - lastApiCallTimeRef.current;
+      if (timeSinceLastCall < 2000) {
+        console.log(`⚠️ Rate limit: Only ${timeSinceLastCall}ms since last call, skipping`);
+        enterState5_Resetting();
+        return;
+      }
+
+      isProcessingApiCallRef.current = true;
+      lastApiCallTimeRef.current = now;
+      console.log("✅ Sending audio to Gemini API...");
+
       const data = await uploadAudioToBackend(uri);
+
+      // Always clear the processing flag after API call completes
+      isProcessingApiCallRef.current = false;
+
       if (data && data.query) {
         setTranscript(data.query);
       }
@@ -392,6 +419,7 @@ export default function VoiceScreen({ navigation }) {
       }
     } catch (err) {
       console.log("State 2 Processing Error:", err);
+      isProcessingApiCallRef.current = false; // Clear flag on error
       enterState5_Resetting();
     }
   };
@@ -498,9 +526,10 @@ export default function VoiceScreen({ navigation }) {
   };
 
   // =========================================================================
-  // HELPER: Upload Audio to Backend
+  // HELPER: Upload Audio to Backend (USES GEMINI API - MUST BE RATE LIMITED)
   // =========================================================================
   const uploadAudioToBackend = async (uri) => {
+    const startTime = Date.now();
     try {
       const formData = new FormData();
       const fileUriParts = uri.split("/");
@@ -524,6 +553,8 @@ export default function VoiceScreen({ navigation }) {
       };
       formData.append("context", JSON.stringify(contextObj));
 
+      console.log(`🚀 GEMINI API CALL: Uploading ${fileName} to /api/v1/process-audio`);
+
       const response = await fetch(`${BACKEND_URL}/api/v1/process-audio`, {
         method: "POST",
         body: formData,
@@ -532,10 +563,17 @@ export default function VoiceScreen({ navigation }) {
         },
       });
 
-      if (!response.ok) return null;
+      const duration = Date.now() - startTime;
+      console.log(`✅ GEMINI API RESPONSE: ${response.status} (${duration}ms)`);
+
+      if (!response.ok) {
+        console.error(`❌ API Error: ${response.status} ${response.statusText}`);
+        return null;
+      }
       return await response.json();
     } catch (err) {
-      console.log("Upload Audio Error:", err);
+      const duration = Date.now() - startTime;
+      console.error(`❌ Upload Audio Error after ${duration}ms:`, err);
       return null;
     }
   };

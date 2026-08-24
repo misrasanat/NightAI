@@ -192,9 +192,15 @@ class ControllerBrain:
 
             # Prompt for multimodal audio processing with structured output
             prompt = (
-                "Listen to this audio recording. "
-                "Transcribe the exact spoken words into the 'transcript' field. "
-                "Then analyze the user's intent and provide the structured routing decision as specified in the system instructions."
+                "Listen to this audio recording carefully. "
+                "CRITICAL INSTRUCTIONS:\n"
+                "1. Transcribe ONLY the actual spoken words you hear - do NOT make up, invent, or hallucinate any content\n"
+                "2. If the audio is silent, unclear, or contains no speech, set transcript to '[SILENCE]' or '[UNCLEAR]'\n"
+                "3. If you hear speech but cannot understand it clearly, set transcript to '[INAUDIBLE]'\n"
+                "4. Never invent commands like 'buy milk', 'play music', etc. if they weren't actually spoken\n"
+                "5. After transcribing, analyze the user's intent and provide the routing decision.\n"
+                "\n"
+                "Transcribe the exact spoken words into the 'transcript' field, then route appropriately."
             )
 
             primary_model = "gemini-3.5-flash"

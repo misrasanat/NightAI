@@ -184,8 +184,10 @@ export default function VoiceScreen({ navigation }) {
   const enterState1_Passive = async () => {
     clearStateTimer();
     setEngineState(EngineState.STATE_1_PASSIVE);
-    setStatusLabel("LISTENING FOR 'NIGHT' (LOCAL STT)");
-    setTranscript("Say 'Night' or 'Hey Night' to trigger...");
+    setStatusLabel("👂 LISTENING FOR 'NIGHT'");
+    setTranscript("Say 'Night' or 'Hey Night' to activate...");
+
+    console.log("🟢 STATE 1: Passive wake-word listening active");
 
     try {
       await setAudioModeAsync({
@@ -198,6 +200,7 @@ export default function VoiceScreen({ navigation }) {
 
       // Check if native Siri speech recognizer is available
       if (isNativeSpeechAvailable) {
+        console.log("📱 Using native iOS SFSpeechRecognizer for wake-word");
         const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
         if (result.granted) {
           ExpoSpeechRecognitionModule.start({
@@ -206,7 +209,11 @@ export default function VoiceScreen({ navigation }) {
             requiresOnDeviceRecognition: true,
           });
           return;
+        } else {
+          console.log("⚠️ Speech recognition permission denied, falling back to Vosk");
         }
+      } else {
+        console.log("📡 Native speech unavailable, using Vosk backend for wake-word");
       }
 
       // Hands-Free Audio Listener (0 Gemini API calls - Uses Local Mac Vosk Engine)
@@ -249,12 +256,14 @@ export default function VoiceScreen({ navigation }) {
 
       if (!data || data.wake_word_detected === false) {
         // No wake word spoken -> Continue listening hands-free
+        console.log("❌ No wake word detected, transcript:", data?.transcript || "none");
         setTimeout(enterState1_Passive, 400);
         return;
       }
 
       // 0-GEMINI HANDS-FREE WAKE WORD DETECTED!
-      console.log("Local Vosk Wake Word Detected:", data.transcript);
+      console.log("✅✅✅ WAKE WORD DETECTED! Transcript:", data.transcript);
+      console.log("🚀 Transitioning to State 2 (Command Collection)");
       setTranscript(data.transcript || "Hey Night");
 
       // Go to State 2 to collect command
@@ -305,9 +314,11 @@ export default function VoiceScreen({ navigation }) {
   const enterState2_Collecting = async () => {
     clearStateTimer();
     setEngineState(EngineState.STATE_2_COLLECTING);
-    setStatusLabel("SAY YOUR COMMAND...");
-    setTranscript("Listening for command...");
-    setAssistantReply("Yes? I'm listening...");
+    setStatusLabel("🎤 SAY YOUR COMMAND NOW");
+    setTranscript("👂 I'm listening - speak your command...");
+    setAssistantReply("");
+
+    console.log("🎤 STATE 2: Wake word detected! Entering command collection mode");
 
     try {
       try {
@@ -349,11 +360,14 @@ export default function VoiceScreen({ navigation }) {
       await recorder.prepareToRecordAsync();
       await recorder.record();
 
-      // Collect user command for 4.5 seconds
+      console.log("🔴 Recording started - speak your command now!");
+
+      // Collect user command for 3 seconds (reduced from 4.5s for faster response)
       stateTimerRef.current = setTimeout(async () => {
         if (engineStateRef.current !== EngineState.STATE_2_COLLECTING) return;
+        console.log("⏱️ Recording time expired, processing command...");
         await processState2_Command();
-      }, 4500);
+      }, 3000);
     } catch (e) {
       console.log("Error starting command recording:", e);
       enterState5_Resetting();
@@ -409,6 +423,20 @@ export default function VoiceScreen({ navigation }) {
 
       if (data && data.query) {
         setTranscript(data.query);
+      }
+
+      // Check if Gemini returned silence/unclear markers
+      const transcript = data?.query || "";
+      const isSilence = transcript.includes("[SILENCE]") ||
+                       transcript.includes("[UNCLEAR]") ||
+                       transcript.includes("[INAUDIBLE]") ||
+                       transcript.trim().length === 0;
+
+      if (isSilence) {
+        console.log("🔇 No clear speech detected, resetting...");
+        setTranscript("I didn't catch that. Try again?");
+        setTimeout(enterState5_Resetting, 1500);
+        return;
       }
 
       if (data && data.reply && data.reply.trim().length > 0) {

@@ -220,7 +220,8 @@ export default function VoiceScreen({ navigation }) {
       await recorder.prepareToRecordAsync();
       await recorder.record();
 
-      stateTimerRef.current = setTimeout(processState1_LocalWakeWordSample, 3500);
+      // Reduced from 3500ms to 1500ms for faster wake-word response
+      stateTimerRef.current = setTimeout(processState1_LocalWakeWordSample, 1500);
     } catch (err) {
       console.log("State 1 Error:", err);
       stateTimerRef.current = setTimeout(enterState1_Passive, 2000);
@@ -246,7 +247,7 @@ export default function VoiceScreen({ navigation }) {
       // Local Silence Filter: Skip tiny files (<1KB) locally to save bandwidth
       const fileInfo = await FileSystem.getInfoAsync(uri);
       if (!fileInfo.exists || fileInfo.size < 1000) {
-        setTimeout(enterState1_Passive, 400);
+        setTimeout(enterState1_Passive, 100); // Faster restart for continuous listening
         return;
       }
 
@@ -257,7 +258,7 @@ export default function VoiceScreen({ navigation }) {
       if (!data || data.wake_word_detected === false) {
         // No wake word spoken -> Continue listening hands-free
         console.log("❌ No wake word detected, transcript:", data?.transcript || "none");
-        setTimeout(enterState1_Passive, 400);
+        setTimeout(enterState1_Passive, 100); // Reduced from 400ms to 100ms for faster continuous listening
         return;
       }
 
